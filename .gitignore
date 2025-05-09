@@ -22,3 +22,5 @@ inst/doc
 man/
 NAMESPACE
 .Rproj.user
+renv/
+.Rprofile

@@ -1,0 +1,386 @@
+---
+title: "Análisis de Subdimensiones NPI"
+author: "Natalia Santis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## 1. Librerías necesarias
+```{r libraries}
+library(tidyverse)      # manipulación de datos
+library(psych)          # análisis factorial y análisis paralelo
+library(GPArotation)    # rotaciones oblicuas
+library(emmeans)        # pruebas post-hoc (8.2)
+library(rstatix)        # evauacion de supuesto anova (8.3)
+```
+
+## 2. Carga de datos
+```{r load-data}
+# Lee la base procesada
+data_limpia2 <- read_csv("data/data_mod/data_limpia_2.csv")
+```
+
+## 3. Conteo de sujetos por grupo
+```{r group-counts}
+# Recuento por diagnóstico (AD, bvFTD, HC)
+group_counts <- data_limpia %>%
+  count(clinical_diagnosis) %>%
+  mutate(
+    Grupo = recode(clinical_diagnosis, # recodificación para utilizar el mismo lenguaje
+                  CN  = "HC",
+                  FTD = "bvFTD",
+                  AD  = "AD"),
+    N = n
+  ) %>%
+  select(Grupo, N)
+
+print(group_counts) #evaluacion del n de los grupos
+```
+ojo, el resultado difiere al de Pato, los grupos no me dan los mismo n
+
+## 4. Verificar diferencias demográficas
+En este bloque comprobamos si las variables demográficas clave (**edad**, **años de escolaridad** y **sexo**) difieren entre los grupos clínicos (AD, bvFTD y HC). Los resultados nos indican si es necesario ajustar los ítems del NPI por estas covariables antes de proceder al análisis factorial (p<0.005)
+```{r demo-anova}
+# ANOVA para edad
+demo_age_aov <- aov(demo_age ~ clinical_diagnosis, data = data_limpia2)
+print(summary(demo_age_aov))
+
+# ANOVA para escolaridad (cog_ed)
+demo_edu_aov <- aov(cog_ed ~ clinical_diagnosis, data = data_limpia2)
+print(summary(demo_edu_aov))
+
+# Distribución de sexo (chi-cuadrado)
+tabla_sexo <- table(data_limpia2$demo_sex, data_limpia2$clinical_diagnosis)
+print(tabla_sexo)
+sexo_chi <- chisq.test(tabla_sexo)
+print(sexo_chi)
+```
+
+## 5. Residualizar ítems NPI por edad,educación y sexo
+Antes de estandarizar y hacer el análisis factorial, es fundamental eliminar la varianza atribuible a las covariables demográficas (**edad**, **escolaridad** y **sexo**). En este paso usamos un modelo lineal para cada ítem `npi_...sev` y extraemos sus **residuales**, los cuales representan la parte de la severidad libre de efectos demográficos.
+
+```{r residualize}
+# Selección de ítems de severidad NPI
+npi_vars <- names(data_limpia2) %>% str_subset("^npi_.*sev$")
+stopifnot(length(npi_vars) > 0)
+
+# Residualizar por edad, escolaridad y sexo
+data_resid <- data_limpia2 %>%
+  mutate(across(
+    all_of(npi_vars),
+    ~ resid(lm(.x ~ demo_age + cog_ed + demo_sex, data = data_limpia2, na.action = na.exclude))# Usar na.action = na.exclude para que los residuales tengan longitud igual al dataset original
+  ))
+```
+### 5.1 Verificación de residualización
+
+Para comprobar que la residualización eliminó correctamente la varianza demográfica se hizo:
+
+1. Revisar una muestra de valores originales vs. residuales.
+2. Comprobar que los residuales estén descorrelacionados con edad, escolaridad y sexo.
+
+```{r check-residuals}
+# Ejemplo con el primer ítem
+item <- npi_vars[1]
+
+# Comparar valores originales y residuales
+df_check <- tibble(
+  original = data_limpia2[[item]],
+  residual = data_resid[[item]]
+)
+print(head(df_check, 10))
+
+# Correlaciones de residuales con covariables (deben ser ~0)
+cor_res_age <- cor(df_check$residual, data_limpia2$demo_age, use="pairwise.complete.obs")
+cor_res_edu <- cor(df_check$residual, data_limpia2$cog_ed, use="pairwise.complete.obs")
+chi_res_sex <- aov(df_check$residual ~ data_limpia2$demo_sex)
+
+cat("Correl residual-edad:", round(cor_res_age,3), "
+")
+cat("Correl residual-esc:", round(cor_res_edu,3), "
+")
+print(summary(chi_res_sex))
+```
+## 6. Estandarizar residuos (z-scores)
+
+Se convierten los residuos a puntajes z para asegurar comparabilidad.
+
+```{r zscore}
+data_z <- data_resid %>%
+  mutate(across(all_of(npi_vars), ~ scale(.x, center = TRUE, scale = TRUE)))
+```
+
+## 7. Pruebas de adecuación factorial
+
+En esta sección evaluamos si los ítems residualizados cumplen los requisitos para un análisis factorial:
+- **Prueba de Bartlett** de esfericidad: verifica que la matriz de correlaciones difiera significativamente de una matriz identidad (p < 0.05).
+- **Índice Kaiser-Meyer-Olkin (KMO)**: mide la adecuación de muestreo (valores > 0.6 aceptables, > 0.8 muy buenos).
+
+```{r adequacy}
+# Matriz de correlaciones
+datum <- data_z[npi_vars]
+cormat <- cor(datum, use = "pairwise.complete.obs")
+
+# 1) Prueba de Bartlett
+bartlett_res <- cortest.bartlett(cormat, n = nrow(datum))
+print(bartlett_res)
+
+# 2) KMO
+kmo_res <- KMO(datum)
+print(kmo_res)
+```
+
+**Interpretación de resultados:**
+
+- **Prueba de Bartlett:** χ²(66) = 1872.12, p < .001. Este resultado altamente significativo indica que la matriz de correlaciones **no** es una matriz identidad, lo que confirma que existe suficiente correlación entre los ítems para justificar un análisis factorial.
+
+- **Índice KMO:** El valor global de MSA = 0.88 se considera *muy bueno*, por encima del umbral de 0.80. Además, los valores individuales de MSA para cada ítem (rango 0.83–0.91) superan el criterio mínimo de 0.60, lo que muestra que cada ítem aporta adecuadamente a la factorización.
+
+En conjunto, estos indicadores confirman que los datos son apropiados para proseguir con el análisis paralelo (siguiente sección) y la Extracción Factorial Exploratoria.
+
+## 8. Determinar número de factores (Análisis paralelo)
+
+Se usa `fa.parallel()` para comparar los eigenvalores reales con los de matrices aleatorias y decidir cuántos factores extraer.
+
+```{r parallel}
+fa.parallel(
+  datum,
+  fm = "pa",
+  fa = "fa",
+  n.iter = 100
+)
+```
+**Interpretación del análisis paralelo:**
+El resultado indica que **el número óptimo de factores es 4** (y ningún componente adicional). Esto significa que, tras ajustar por edad, escolaridad y sexo y estandarizar los residuos, cuatro factores principales capturan la estructura subyacente de las variables de severidad del NPI, superando a los eigenvalores esperados bajo aleatoriedad.
+
+## 9. Análisis Factorial Exploratorio
+
+Con el número de factores `nf` sugerido:
+
+```{r efa}
+nf <- 4  # usar el valor sugerido por fa.parallel
+ef <- fa(
+  datum,
+  nfactors = nf,
+  fm = "pa",
+  rotate = "oblimin"
+)
+print(ef, digits = 2)
+```
+**Interpretación de la EFA:**
+
+- **SS loadings y Varianza explicada:** los cuatro factores extraídos tienen cargas propias (SS loadings) de 1.48, 1.41, 1.37 y 1.33, que corresponden al 12%, 12%, 11% y 11% de la varianza total de los ítems, sumando un 47% acumulado. Cada factor aporta de manera balanceada (Proportion Explained ≈24–27%).
+
+- **Correlaciones entre factores:** todos los factores presentan correlaciones moderadas (r = 0.36–0.54), justificando el uso de rotación oblicua (oblimin) que permite factores correlacionados.
+
+- **Ajuste del modelo:**
+  - **RMSR** = 0.02 (muy cercano a 0) indica excelentes ajustes entre la matriz observada y la recreada.
+  - **RMSEA** = 0.052 (IC 90%: 0.036–0.069) sugiere buen ajuste (valores <0.06 aceptables).
+  - **TLI** = 0.945, cercano a 1, denota alta fiabilidad factorial.
+  - El test χ² del modelo (df=24, χ²=59.98, p<.001) y el χ² empírico (39.19, p<.026) indican un ajuste significativo, pero con alta potencia (>500 datos) esto es esperable.
+
+- **Comunalidades (h2) y unicidades (u2):**
+  - Las comunalidades (h2) oscilan entre ~0.23 y 0.80, mostrando que la mayoría de ítems están bien representados por los cuatro factores.
+  - Las unicidades (u2 = 1 – h2) reflejan la varianza única o error.
+  - La complejidad media de ítems = 1.5 sugiere que la mayoría carga predominantemente en un solo factor.
+
+En conjunto, estos indicadores confirman que un modelo de 4 factores es apropiado y ofrece un buen ajuste a los datos residualizados y estandarizados.
+
+## 10. Obtener puntuaciones y compuestos
+
+Tras el EFA, se extraen las puntuaciones factoriales y se construyen compuestos
+
+```{r scores-composites}
+# 1) Puntuaciones factoriales
+efa_scores <- as_tibble(ef$scores)
+colnames(efa_scores) <- paste0("Factor", seq_len(ncol(efa_scores)))
+
+# 2) Unir con datos originales
+data_scores <- bind_cols(data_limpia2, efa_scores)
+
+# 3) Compuestos para cada factor basado en cargas > 0.30
+L <- as.data.frame(unclass(ef$loadings[]))
+composite_list <- list()
+for(i in seq_len(ncol(L))) {
+  factor_name <- paste0("Factor", i)
+  items_i <- rownames(L)[abs(L[,i]) > 0.30]
+  comp_col <- paste0("comp_", factor_name)
+  data_scores[[comp_col]] <- rowMeans(select(data_z, all_of(items_i)), na.rm = TRUE)
+  composite_list[[factor_name]] <- items_i
+}
+```
+
+### 10.1 Mostrar resultados
+```{r showcomposites}
+# Ver algunas filas con puntuaciones y compuestos
+head(data_scores)
+
+# Listado de ítems que componen cada factor
+composite_list
+```
+
+A partir de los ítems que cargan en cada factor (|carga| > 0.30), se propone la siguiente interpretación conceptual:
+
+- **Factor 1: Afecto depresivo y ansiedad**
+  - Ítems: `npi_depdsev` (depresión), `npi_anxsev` (ansiedad), `npi_apasev` (apatía).
+  - Este factor agrupa síntomas del estado de ánimo y motivación, reflejando un componente afectivo-primer orden.
+
+- **Factor 2: Alteraciones de sueño y apetito**
+  - Ítems: `npi_apasev` (apatía), `npi_nitesev` (insomnio/nocturnidad), `npi_appsev` (cambios de apetito).
+  - Representa cambios en los patrones básicos de sueño y alimentación, a menudo asociados con desregulación afectiva.
+
+- **Factor 3: Agitación y desinhibición**
+  - Ítems: `npi_agitsev` (agitación), `npi_elatsev` (euforia), `npi_disnsev` (desinhibición), `npi_irrsev` (irritabilidad).
+  - Refleja un núcleo de conductas exteriorizadas y de control inhibitorio alterado.
+
+- **Factor 4: Sintomatología psicótica**
+  - Ítems: `npi_delsev` (delirios), `npi_hallsev` (alucinaciones).
+  - Agrega las manifestaciones de psicosis, indicando un dominio separado de pensamiento y percepción.
+
+Estas etiquetas facilitan la interpretación clínica de cada dimensión factorial y permiten explorar cómo difieren entre grupos (HC, AD, bvFTD) en pasos posteriores.
+
+## ¡¡¡¡¡¡ver warning de aqui hacia abajo!!!!!!
+
+## 11. Comparación de puntuaciones factoriales entre grupos
+
+Para evaluar diferencias en las dimensiones identificadas (Factor1–Factor4) entre los grupos clínicos (AD, bvFTD, HC):
+
+Antes de graficar, nos aseguramos de que `clinical_diagnosis` sea factor y tenga el orden deseado:
+
+```{r set-factor, echo=TRUE}
+data_scores <- data_scores %>%
+  mutate(clinical_diagnosis = factor(clinical_diagnosis, levels = c("CN", "AD", "FTD")))
+```
+
+### 11.1 Gráficos y ANOVA global
+```{r compare-groups, echo=TRUE}
+library(ggpubr)
+for(f in paste0("Factor", 1:4)) {
+  p <- ggboxplot(
+    data_scores,
+    x = "clinical_diagnosis",
+    y = f,
+    color = "clinical_diagnosis",
+    palette = "jco",
+    add = "jitter"
+  ) +
+    stat_compare_means(
+      aes(label = ..p.format..),    # mapea correctamente p.format
+      method = "anova",            # test ANOVA global
+      label.y = max(data_scores[[f]], na.rm = TRUE) * 1.1 # ajustar posición
+    ) +
+    labs(
+      title = paste("Comparación de", f, "entre grupos"),
+      x = "Diagnóstico clínico",
+      y = f
+    )
+  print(p)
+}
+```
+
+Con esta corrección, evitamos las advertencias de coerción y garantizamos que `stat_compare_means` encuentre correctamente la estadística `p.format`. Si deseas comparar directamente pares específicos en la gráfica, puedes usar:
+```{r compare-pairs, echo=TRUE}
+# Comparaciones post-hoc en la misma gráfica
+stat_compare_means(
+  comparisons = list(c("CN","AD"), c("AD","FTD"), c("CN","FTD")),
+  method = "anova",
+  label = "p.format"
+)
+```
+
+A partir de los boxplots y los valores p del ANOVA para cada factor:
+
+- **Factor 1** (Figura): los controles sanos (HC) presentan puntuaciones centrales cercanas a 0, los pacientes con AD se sitúan ligeramente por encima, y los de bvFTD muestran los valores más altos. El ANOVA (p < 2e-16) indica diferencias significativas entre los tres grupos, con un gradiente HC < AD < bvFTD.
+
+- **Factor 2**: un patrón similar emergió: HC con puntuaciones bajas, AD moderadas y bvFTD más elevadas. El p < 2e-16 confirma diferencias estadísticamente significativas.
+
+- **Factor 3**: de nuevo, se observa que HC tienen medianas negativas o cercanas a cero, AD medianas ligeramente positivas y bvFTD medianas mayores. Todas las comparaciones resultan significativas (p < 2e-16).
+
+- **Factor 4**: aunque la dispersión de AD y bvFTD es mayor, el orden de medianas sigue siendo HC < AD < bvFTD con p = 1.2e-15, confirmando diferencias.
+
+En conjunto, estos resultados muestran que en las cuatro dimensiones factoriales existe un aumento progresivo de la severidad de los síntomas (capturados por los factores) desde HC, pasando por AD, hasta bvFTD. Esto sugiere que cada factor discrimina eficazmente entre los grupos clínicos.
+
+### 11.2 Pruebas Tukey post-hoc entre grupos 
+
+Para identificar **qué pares** de grupos difieren en cada factor después del ANOVA, realizamos comparaciones múltiples de Tukey:
+
+```{r posthoc-factor, warning=FALSE}
+library(emmeans)
+posthoc_list <- list()
+for(f in paste0("Factor", 1:4)) {
+  mod <- aov(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+  ph <- emmeans(mod, pairwise ~ clinical_diagnosis, adjust = "tukey")$contrasts
+  posthoc_list[[f]] <- as.data.frame(ph)
+}
+posthoc_list
+```
+
+**Interpretación global:**
+
+- En **los cuatro factores**, los pares de comparaciones muestran:
+  - **AD vs. HC (CN):** estimaciones positivas y p < .0001, lo que indica que los pacientes con AD tienen puntuaciones factoriales significativamente **mayores** que los controles sanos.
+  - **bvFTD vs. AD:** estimaciones negativas (p < .0001), lo que equivale a puntuaciones en bvFTD **superiores** a las de AD (invertido en la dirección del contraste AD–FTD).
+  - **bvFTD vs. HC (CN):** estimaciones negativas y p < .0001, equivalentes a puntuaciones de bvFTD **muy superiores** a las de HC.
+
+En resumen, hay un **gradiente consistente** HC < AD < bvFTD en todas las dimensiones factoriales, confirmando que cada factor discrimina de forma clara y estadísticamente significativa entre los tres grupos clínicos.
+
+### 11.3 Evaluación de supuestos
+
+```{r check-assumptions, warning=FALSE}
+
+# Iteramos por cada factor para testear supuestos
+assumption_results <- map(paste0("Factor",1:4), function(f) {
+  mod <- aov(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+  # Shapiro-Wilk en residuos
+  sw <- shapiro_test(residuals(mod))
+  # Levene sobre varianzas
+  lv <- levene_test(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+  list(factor = f, shapiro = sw, levene = lv)
+})
+
+assumption_results
+```
+
+- **Si en algún factor** `shapiro$p < .05` indica que los residuos no siguen normalidad, y si **`levene$p < .05`** indica heterogeneidad de varianzas.  
+- Cuando fallen estos supuestos, mejor usar **`kruskal.test()`** seguido de **`dunn_test()`** (por ejemplo, `data_scores %>% dunn_test(Factor1 ~ clinical_diagnosis, p.adjust.method="bonferroni")`), en lugar de ANOVA + Tukey.
+
+Así tendrás la certeza de que tus post-hoc son válidos o, de lo contrario, sabrás cuándo debes usar métodos no paramétricos.
+
+### 11.4 Métodos no paramétricos
+Si **shapiro_p < .05** o **levene_p < .05**, usar Kruskal-Wallis y Dunn:
+
+```{r nonparametric}
+library(rstatix)
+for(f in paste0("Factor",1:4)) {
+  kw <- kruskal_test(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+  cat(f, ": Kruskal-Wallis p=", kw$p, "\n")
+  if(kw$p < .05) {
+    print(dunn_test(data_scores,
+                    as.formula(paste(f, "~ clinical_diagnosis")),
+                    p.adjust.method = "bonferroni"))
+  }
+}
+```
+Tras la evaluación de supuestos, observamos que todos los factores presentaron p \< .05 en la prueba de Kruskal–Wallis, por lo que procedimos con comparaciones de Dunn con corrección de Bonferroni:
+
+- **Factor 1** y **Factor 2**: las comparaciones post-hoc mostraron diferencias significativas en los tres pares (HC vs AD, AD vs bvFTD, HC vs bvFTD; p.adj \< .001), confirmando el gradiente HC < AD < bvFTD.
+
+- **Factor 3**:
+  - **HC vs AD:** p.adj = .1896 (no significativo), lo que indica puntuaciones similares entre controles y AD.
+  - **HC vs bvFTD:** p.adj \< .0001 (****), bvFTD > HC.
+  - **AD vs bvFTD:** p.adj \< .0001 (****), bvFTD > AD.
+  
+  Esto sugiere que el aumento de sintomatología reflejada por el Factor 3 es especialmente marcado en bvFTD, pero no distingue bien AD de controles.
+
+- **Factor 4**:
+  - **HC vs AD:** p.adj = .6451 (ns), sin diferencia entre controles y AD.
+  - **HC vs bvFTD:** p.adj \< .0001 (****), bvFTD > HC.
+  - **AD vs bvFTD:** p.adj \< .0001 (****), bvFTD > AD.
+  
+  Indica que la sintomatología psicótica (Factor 4) está elevada en bvFTD, pero no en AD comparado con controles.
+
+Estas conclusiones complementan el ANOVA global y muestran un patrón más matizado: mientras que los factores 1 y 2 discriminan todos los pares de grupos, los factores 3 y 4 distinguen principalmente bvFTD de AD y de HC.
+
