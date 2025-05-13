@@ -23,6 +23,7 @@ library(emmeans)        # pruebas post-hoc (8.2)
 library(rstatix)  # evauacion de supuesto anova (8.3)
 #install.packages("ggpubr")
 library(ggpubr) #para ggplot 11.1
+library(broom) # resultados paramétricos 11.3
 
 ```
 
@@ -249,9 +250,7 @@ A partir de los ítems que cargan en cada factor (|carga| > 0.30), se propone la
 
 Estas etiquetas facilitan la interpretación clínica de cada dimensión factorial y permiten explorar cómo difieren entre grupos (HC, AD, bvFTD) en pasos posteriores.
 
-## ¡¡¡¡¡¡ver warning de aqui hacia abajo!!!!!!
-
-## 11. Comparación de puntuaciones factoriales entre grupos
+## 11. Comparación Paramétrica de puntuaciones factoriales entre grupos 
 
 Para evaluar diferencias en las dimensiones identificadas (Factor1–Factor4) entre los grupos clínicos (AD, bvFTD, HC):
 
@@ -345,7 +344,6 @@ print(missing_any)
 Para identificar **qué pares** de grupos difieren en cada factor después del ANOVA, realizamos comparaciones múltiples de Tukey:
 
 ```{r posthoc-factor}
-library(emmeans)
 posthoc_list <- list()
 for(f in paste0("Factor", 1:4)) {
   mod <- aov(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
@@ -364,7 +362,54 @@ posthoc_list
 
 En resumen, hay un **gradiente consistente** HC < AD < bvFTD en todas las dimensiones factoriales, confirmando que cada factor discrimina de forma clara y estadísticamente significativa entre los tres grupos clínicos.
 
-### 11.3 Evaluación de supuestos
+### 11.3 Tabla de resultados paramétricoslibrary(dplyr)
+
+```{r resultados parametricos}
+
+factors <- paste0("Factor", 1:4)
+
+# Recorremos cada factor, ajustamos el modelo, extraemos ANOVA y Tukey
+res_list <- lapply(factors, function(f) {
+  # 1) Ajuste del modelo
+  mod <- aov(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+  
+  # 2) ANOVA: term == clinical_diagnosis
+  anova_row <- broom::tidy(mod) %>%
+    filter(term == "clinical_diagnosis") %>%
+    transmute(
+      Factor    = f,
+      df        = df,
+      `F value` = statistic,
+      `p value` = p.value
+    )
+  
+  # 3) Tukey post-hoc
+  emm <- emmeans(mod, pairwise ~ clinical_diagnosis, adjust = "tukey")
+  tukey_raw <- summary(emm$contrasts)   # aquí se genera el data.frame con p.value
+  tukey_df <- as_tibble(tukey_raw) %>%
+    transmute(
+      Factor     = f,
+      Comparison = contrast,
+      Estimate   = estimate,
+      SE         = SE,
+      df         = df,
+      `p adj.`   = p.value
+    )
+  list(anova = anova_row, tukey = tukey_df)
+})
+
+# Combina en dos tablas
+anova_tbl <- bind_rows(lapply(res_list, `[[`, "anova"))
+tukey_tbl <- bind_rows(lapply(res_list, `[[`, "tukey"))
+
+anova_tbl
+tukey_tbl
+
+```
+
+
+
+### 11.4 Evaluación de supuestos
 
 ```{r check-assumptions-optimized}
 
@@ -397,20 +442,58 @@ Homogeneidad de varianzas (Levene): Los valores F son elevados y todas las prueb
 
 Dado que se incumplen ambos supuestos (normalidad y homocedasticidad), en lugar de ANOVA+Tukey para las comparaciones de grupos se optará por Kruskal–Wallis seguido de Dunn con corrección Bonferroni.
 
-### 11.4 Métodos no paramétricos
+## 12. Comparación no paramétrica
 Si **shapiro_p < .05** o **levene_p < .05**, por tanto se usa Kruskal-Wallis y Dunn:
 
 ```{r nonparametric}
-library(rstatix)
-for(f in paste0("Factor",1:4)) {
-  kw <- kruskal_test(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
-  cat(f, ": Kruskal-Wallis p=", kw$p, "\n")
-  if(kw$p < .05) {
-    print(dunn_test(data_scores,
-                    as.formula(paste(f, "~ clinical_diagnosis")),
-                    p.adjust.method = "bonferroni"))
+
+factors <- paste0("Factor", 1:4)
+
+# 1) Tabla de Kruskal–Wallis
+kw_tbl <- map_df(factors, function(f) {
+  kr <- kruskal_test(data_scores, as.formula(paste(f, "~ clinical_diagnosis")))
+  tibble(
+    Factor            = f,
+    `χ² (KW)`         = kr$statistic,
+    `df (KW)`         = kr$df,
+    `p-value (KW)`    = kr$p
+  )
+})
+
+# 2) Tabla de Dunn post-hoc (solo para factores con p < .05)
+dunn_tbl <- map_df(factors, function(f) {
+  kr <- kruskal_test(data_scores, as.formula(paste(f, "~ clinical_diagnosis")))
+  if (kr$p < 0.05) {
+    dt <- dunn_test(
+      data = data_scores,
+      formula = as.formula(paste(f, "~ clinical_diagnosis")),
+      p.adjust.method = "bonferroni"
+    )
+    dt %>%
+      transmute(
+        Factor       = f,
+        Comparison   = paste(group1, group2, sep = " vs "),
+        `statistic`  = statistic,
+        `p adj.`     = p.adj,
+        `signif`     = p.adj.signif
+      )
+  } else {
+    # Creamos fila vacía para mantener consistencia
+    tibble(
+      Factor     = f,
+      Comparison = NA_character_,
+      statistic  = NA_real_,
+      `p adj.`   = NA_real_,
+      `signif`   = NA_real_,
+    )
   }
-}
+})
+
+kw_tbl
+dunn_tbl
+
+
+
 ```
 Tras la evaluación de supuestos, observamos que todos los factores presentaron p \< .05 en la prueba de Kruskal–Wallis, por lo que procedimos con comparaciones de Dunn con corrección de Bonferroni:
 
