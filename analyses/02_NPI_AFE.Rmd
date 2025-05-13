@@ -381,7 +381,7 @@ assumption_results <- map_df(
     tibble(
       Factor        = f,
       Shapiro_W     = sw$statistic,
-      Shapiro_p     = sw$p,
+      Shapiro_p     = sw$p.value,
       Levene_F      = lv$statistic,
       Levene_p      = lv$p
     )
@@ -391,7 +391,7 @@ assumption_results <- map_df(
 print(assumption_results)
 ```
 
-Normalidad de residuos (Shapiro–Wilk): Los estadísticos W se alejan de 1, y sus correspondientes p < .05 (no mostrados aquí) indican que en los cuatro factores los residuos no siguen una distribución normal.
+Normalidad de residuos (Shapiro–Wilk): Los estadísticos W se alejan de 1, y sus correspondientes p < .05 indican que en los cuatro factores los residuos no siguen una distribución normal.
 
 Homogeneidad de varianzas (Levene): Los valores F son elevados y todas las pruebas arrojan p ≪ .001, lo que revela heterogeneidad de varianzas entre los grupos clínicos.
 
