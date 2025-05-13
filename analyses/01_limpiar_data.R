@@ -1,5 +1,8 @@
 library(dplyr)
-library(writexl)
+install.packages("writexl")
+library
+install.packages("readr")
+library(readr)
 
 data <- read_csv("all_variables.csv")
 
@@ -108,7 +111,8 @@ for (i in seq_along(variables)) {
 
 # Crear data_limpia_2 (último paso)
 data_limpia_2 <- data_filtrada %>% 
-  filter(!pais %in% c("other", NA))
+  filter(!pais %in% c("other", NA),
+         filter (cog_ed != 0))
 
 # Registrar el paso de data_limpia_2
 reporte_exclusion <- bind_rows(
@@ -121,6 +125,8 @@ reporte_exclusion <- bind_rows(
     Filas_Restantes = nrow(data_limpia_2)
   )
 )
+
+
 
 # Mostrar los datos filtrados
 print(head(data_limpia_2))
