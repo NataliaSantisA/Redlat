@@ -20,7 +20,10 @@ library(GPArotation)    # rotaciones oblicuas
 #install.packages("emmeans")
 library(emmeans)        # pruebas post-hoc (8.2)
 #install.packages("rstatix")
-library(rstatix)        # evauacion de supuesto anova (8.3)
+library(rstatix)  # evauacion de supuesto anova (8.3)
+#install.packages("ggpubr")
+library(ggpubr) #para ggplot 11.1
+
 ```
 
 ## 2. Carga de datos
@@ -261,7 +264,6 @@ data_scores <- data_scores %>%
 
 ### 11.1 Gráficos y ANOVA global
 ```{r compare-groups, echo=TRUE}
-library(ggpubr)
 for(f in paste0("Factor", 1:4)) {
   p <- ggboxplot(
     data_scores,
@@ -307,11 +309,42 @@ A partir de los boxplots y los valores p del ANOVA para cada factor:
 
 En conjunto, estos resultados muestran que en las cuatro dimensiones factoriales existe un aumento progresivo de la severidad de los síntomas (capturados por los factores) desde HC, pasando por AD, hasta bvFTD. Esto sugiere que cada factor discrimina eficazmente entre los grupos clínicos.
 
+#### 11.1.2 Tabla para ver missing
+```{r tabla missing}
+
+#  definimos el vector de factores
+factores <- paste0("Factor", 1:4)
+
+# Tabla de Conteo, para cada factor y cada grupo, cuántos NA hay y cuántos casos completos
+map_df(factores, function(f) {
+  data_scores %>%
+    group_by(clinical_diagnosis) %>%
+    summarise(
+      total     = n(),
+      missing   = sum(is.na(.data[[f]])),
+      complete  = total - missing,
+      .groups   = "drop"
+    ) %>%
+    mutate(factor = f) %>%
+    select(factor, clinical_diagnosis, total, complete, missing)
+}) %>%
+  arrange(factor, clinical_diagnosis) %>%
+  print(n = Inf)
+
+# Evaluar record_id de NA
+missing_any <- data_limpia2 %>%
+  filter(if_any(all_of(npi_vars), ~ is.na(.x))) %>%  # filas con NA en algún npi_vars
+  select(record_id, clinical_diagnosis)              # traer diagnóstico 
+
+
+print(missing_any)
+
+```
 ### 11.2 Pruebas Tukey post-hoc entre grupos 
 
 Para identificar **qué pares** de grupos difieren en cada factor después del ANOVA, realizamos comparaciones múltiples de Tukey:
 
-```{r posthoc-factor, warning=FALSE}
+```{r posthoc-factor}
 library(emmeans)
 posthoc_list <- list()
 for(f in paste0("Factor", 1:4)) {
