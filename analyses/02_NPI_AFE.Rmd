@@ -5,10 +5,6 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
-```
-
 ## 1. Librerías necesarias
 ```{r renv}
 install.packages("renv")
@@ -36,7 +32,7 @@ data_limpia2 <- read_csv("../data/data_mod/data_limpia_2.csv")
 ## 3. Conteo de sujetos por grupo
 ```{r group-counts}
 # Recuento por diagnóstico (AD, bvFTD, HC)
-group_counts <- data_limpia %>%
+group_counts <- data_limpia2 %>%
   count(clinical_diagnosis) %>%
   mutate(
     Grupo = recode(clinical_diagnosis, # recodificación para utilizar el mismo lenguaje
@@ -75,7 +71,6 @@ Antes de estandarizar y hacer el análisis factorial, es fundamental eliminar la
 ```{r residualize}
 # Selección de ítems de severidad NPI
 npi_vars <- names(data_limpia2) %>% str_subset("^npi_.*sev$")
-stopifnot(length(npi_vars) > 0)
 
 # Residualizar por edad, escolaridad y sexo
 data_resid <- data_limpia2 %>%
@@ -119,7 +114,7 @@ Se convierten los residuos a puntajes z para asegurar comparabilidad.
 
 ```{r zscore}
 data_z <- data_resid %>%
-  mutate(across(all_of(npi_vars), ~ scale(.x, center = TRUE, scale = TRUE)))
+  mutate(across(all_of(npi_vars), ~ as.numeric(scale(.x, center = TRUE, scale = TRUE))))
 ```
 
 ## 7. Pruebas de adecuación factorial
@@ -157,9 +152,9 @@ Se usa `fa.parallel()` para comparar los eigenvalores reales con los de matrices
 ```{r parallel}
 fa.parallel(
   datum,
-  fm = "pa",
-  fa = "fa",
-  n.iter = 100
+  fm = "pa", # factorización por ejes principales
+  fa = "fa", # comparación los eigenvalores reales contra los de un modelo factorial
+  n.iter = 100 # iteraciones
 )
 ```
 **Interpretación del análisis paralelo:**
@@ -172,10 +167,10 @@ Con el número de factores `nf` sugerido:
 ```{r efa}
 nf <- 4  # usar el valor sugerido por fa.parallel
 ef <- fa(
-  datum,
-  nfactors = nf,
-  fm = "pa",
-  rotate = "oblimin"
+  datum,           # la matriz de datos (z-scores de los ítems NPI)
+  nfactors = nf,   # número de factores que decidiste extraer (por ejemplo nf = 4)
+  fm = "pa",       # método de estimación: principal axis factoring (ejes principales)
+  rotate = "oblimin"  # rotación oblicua para permitir factores correlacionados
 )
 print(ef, digits = 2)
 ```
