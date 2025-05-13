@@ -10,18 +10,27 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ## 1. Librerías necesarias
+```{r renv}
+install.packages("renv")
+renv::restore() #seleccionar para activar la libreria del proyecto: Activate the project and use the project library.
+```
+
 ```{r libraries}
-library(tidyverse)      # manipulación de datos
-library(psych)          # análisis factorial y análisis paralelo
+#install.packages("tidyverse")
+library(tidyverse) #manipulación de datos
+#install.packages("psych")
+library(psych)  # análisis factorial y análisis paralelo
 library(GPArotation)    # rotaciones oblicuas
+#install.packages("emmeans")
 library(emmeans)        # pruebas post-hoc (8.2)
+#install.packages("rstatix")
 library(rstatix)        # evauacion de supuesto anova (8.3)
 ```
 
 ## 2. Carga de datos
 ```{r load-data}
 # Lee la base procesada
-data_limpia2 <- read_csv("data/data_mod/data_limpia_2.csv")
+data_limpia2 <- read_csv("../data/data_mod/data_limpia_2.csv")
 ```
 
 ## 3. Conteo de sujetos por grupo
