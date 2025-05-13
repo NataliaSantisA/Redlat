@@ -366,25 +366,36 @@ En resumen, hay un **gradiente consistente** HC < AD < bvFTD en todas las dimens
 
 ### 11.3 Evaluación de supuestos
 
-```{r check-assumptions, warning=FALSE}
+```{r check-assumptions-optimized}
 
-# Iteramos por cada factor para testear supuestos
-assumption_results <- map(paste0("Factor",1:4), function(f) {
-  mod <- aov(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
-  # Shapiro-Wilk en residuos
-  sw <- shapiro_test(residuals(mod))
-  # Levene sobre varianzas
-  lv <- levene_test(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
-  list(factor = f, shapiro = sw, levene = lv)
-})
+assumption_results <- map_df(
+  paste0("Factor", 1:4),
+  function(f) {
+    # Ajustamos el modelo
+    mod <- aov(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+    # Shapiro–Wilk sobre los residuos
+    sw <- shapiro_test(residuals(mod))
+    # Levene sobre las varianzas
+    lv <- levene_test(as.formula(paste(f, "~ clinical_diagnosis")), data = data_scores)
+    # Construimos una fila con los resultados
+    tibble(
+      Factor        = f,
+      Shapiro_W     = sw$statistic,
+      Shapiro_p     = sw$p,
+      Levene_F      = lv$statistic,
+      Levene_p      = lv$p
+    )
+  }
+)
 
-assumption_results
+print(assumption_results)
 ```
 
-- **Si en algún factor** `shapiro$p < .05` indica que los residuos no siguen normalidad, y si **`levene$p < .05`** indica heterogeneidad de varianzas.  
-- Cuando fallen estos supuestos, mejor usar **`kruskal.test()`** seguido de **`dunn_test()`** (por ejemplo, `data_scores %>% dunn_test(Factor1 ~ clinical_diagnosis, p.adjust.method="bonferroni")`), en lugar de ANOVA + Tukey.
+Normalidad de residuos (Shapiro–Wilk): Los estadísticos W se alejan de 1, y sus correspondientes p < .05 (no mostrados aquí) indican que en los cuatro factores los residuos no siguen una distribución normal.
 
-Así tendrás la certeza de que tus post-hoc son válidos o, de lo contrario, sabrás cuándo debes usar métodos no paramétricos.
+Homogeneidad de varianzas (Levene): Los valores F son elevados y todas las pruebas arrojan p ≪ .001, lo que revela heterogeneidad de varianzas entre los grupos clínicos.
+
+Dado que se incumplen ambos supuestos (normalidad y homocedasticidad), en lugar de ANOVA+Tukey para las comparaciones de grupos se optará por Kruskal–Wallis seguido de Dunn con corrección Bonferroni.
 
 ### 11.4 Métodos no paramétricos
 Si **shapiro_p < .05** o **levene_p < .05**, usar Kruskal-Wallis y Dunn:
