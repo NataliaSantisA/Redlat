@@ -9,6 +9,7 @@ output: html_document
 ```{r renv}
 install.packages("renv")
 renv::restore() #seleccionar para activar la libreria del proyecto: Activate the project and use the project library.
+#ejecutar sólo la primera vez, luego comentar
 ```
 
 ```{r libraries}
