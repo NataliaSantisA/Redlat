@@ -398,7 +398,7 @@ Homogeneidad de varianzas (Levene): Los valores F son elevados y todas las prueb
 Dado que se incumplen ambos supuestos (normalidad y homocedasticidad), en lugar de ANOVA+Tukey para las comparaciones de grupos se optará por Kruskal–Wallis seguido de Dunn con corrección Bonferroni.
 
 ### 11.4 Métodos no paramétricos
-Si **shapiro_p < .05** o **levene_p < .05**, usar Kruskal-Wallis y Dunn:
+Si **shapiro_p < .05** o **levene_p < .05**, por tanto se usa Kruskal-Wallis y Dunn:
 
 ```{r nonparametric}
 library(rstatix)
@@ -414,21 +414,21 @@ for(f in paste0("Factor",1:4)) {
 ```
 Tras la evaluación de supuestos, observamos que todos los factores presentaron p \< .05 en la prueba de Kruskal–Wallis, por lo que procedimos con comparaciones de Dunn con corrección de Bonferroni:
 
-- **Factor 1** y **Factor 2**: las comparaciones post-hoc mostraron diferencias significativas en los tres pares (HC vs AD, AD vs bvFTD, HC vs bvFTD; p.adj \< .001), confirmando el gradiente HC < AD < bvFTD.
+- **Factor 1** y **Factor 2**: las comparaciones post-hoc mostraron diferencias significativas en los tres pares (NC vs AD, AD vs bvFTD, NC vs bvFTD; p.adj \< .001), confirmando el gradiente NC < AD < bvFTD.
 
 - **Factor 3**:
-  - **HC vs AD:** p.adj = .1896 (no significativo), lo que indica puntuaciones similares entre controles y AD.
-  - **HC vs bvFTD:** p.adj \< .0001 (****), bvFTD > HC.
+  - **NC vs AD:** p.adj = .1896 (no significativo), lo que indica puntuaciones similares entre controles y AD.
+  - **NC vs bvFTD:** p.adj \< .0001 (****), bvFTD > HC.
   - **AD vs bvFTD:** p.adj \< .0001 (****), bvFTD > AD.
   
   Esto sugiere que el aumento de sintomatología reflejada por el Factor 3 es especialmente marcado en bvFTD, pero no distingue bien AD de controles.
 
 - **Factor 4**:
-  - **HC vs AD:** p.adj = .6451 (ns), sin diferencia entre controles y AD.
-  - **HC vs bvFTD:** p.adj \< .0001 (****), bvFTD > HC.
+  - **NC vs AD:** p.adj = .6451 (ns), sin diferencia entre controles y AD.
+  - **NC vs bvFTD:** p.adj \< .0001 (****), bvFTD > HC.
   - **AD vs bvFTD:** p.adj \< .0001 (****), bvFTD > AD.
   
   Indica que la sintomatología psicótica (Factor 4) está elevada en bvFTD, pero no en AD comparado con controles.
 
-Estas conclusiones complementan el ANOVA global y muestran un patrón más matizado: mientras que los factores 1 y 2 discriminan todos los pares de grupos, los factores 3 y 4 distinguen principalmente bvFTD de AD y de HC.
+Estas conclusiones complementan el ANOVA global y muestran un patrón más matizado: mientras que los factores 1 y 2 discriminan todos los pares de grupos, los factores 3 y 4 distinguen principalmente bvFTD de AD y de NC.
 
