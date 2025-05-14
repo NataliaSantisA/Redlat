@@ -23,3 +23,13 @@ man/
 NAMESPACE
 .Rproj.user
 
+# Ignorar la carpeta de librerías locales
+renv/library/
+
+# Pero NO ignorar estos archivos:
+!renv/activate.R
+!renv.lock
+
+# tampoco ignorar la configuración del proyecto
+!.Rprofile
+
