@@ -311,7 +311,7 @@ cronbach_res
 ```{r guradar-cronbach,echo=FALSE, results='hide'}
 # Guardar el reporte de exclusión en Excel
 # Definir rutas
-dir_out  <- "../outputs/05/npi_afe"
+dir_out  <- "../outputs/05/npi_afe_control"
 
 # Crear directorios si no existen
 if (!dir.exists(dir_out)) dir.create(dir_out, recursive = TRUE)
@@ -319,7 +319,7 @@ if (!dir.exists(dir_out)) dir.create(dir_out, recursive = TRUE)
 # Guardar reporte de exclusión en Excel
 write_xlsx(
   cronbach_res,
-  path = file.path(dir_out, "05_npi_afe_cronbach")
+  path = file.path(dir_out, "05_npi_afe_cronbach_control")
 )
 
 ```
