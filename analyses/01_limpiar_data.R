@@ -1,10 +1,10 @@
 library(dplyr)
 install.packages("writexl")
-library
+library(writexl)
 install.packages("readr")
 library(readr)
 
-data <- read_csv("all_variables.csv")
+data <- read_csv("data/data_original/all_variables.csv")
 
 # Creando una nueva variable llamada 'pais' basada en los valores de 'demo_resid'
 data <- data %>%
@@ -112,14 +112,14 @@ for (i in seq_along(variables)) {
 # Crear data_limpia_2 (último paso)
 data_limpia_2 <- data_filtrada %>% 
   filter(!pais %in% c("other", NA),
-         filter (cog_ed != 0))
+         cog_ed != 0)
 
 # Registrar el paso de data_limpia_2
 reporte_exclusion <- bind_rows(
   reporte_exclusion,
   data.frame(
     Paso = nrow(reporte_exclusion) + 1,
-    Descripcion = "Filtrar 'other' y NA en la columna 'pais' para data_limpia_2",
+    Descripcion = "Filtrar pais 'other' y NA, y cog_ed != 0",
     Filas_Iniciales = nrow(data_filtrada),
     Filas_Excluidas = nrow(data_filtrada) - nrow(data_limpia_2),
     Filas_Restantes = nrow(data_limpia_2)
@@ -132,7 +132,27 @@ reporte_exclusion <- bind_rows(
 print(head(data_limpia_2))
 
 # Guardar el reporte de exclusión en Excel
-write_xlsx(reporte_exclusion, "Reporte_Exclusion_Paso_a_Paso.xlsx")
+# Definir rutas
+dir_out  <- "outputs/01"
+dir_mod  <- "data/data_mod/01"
 
-# Guardar la base final en Excel
-write_xlsx(data_limpia_2, "Base_Final_Depurada.xlsx")
+# Crear directorios si no existen
+if (!dir.exists(dir_out)) dir.create(dir_out, recursive = TRUE)
+if (!dir.exists(dir_mod)) dir.create(dir_mod, recursive = TRUE)
+
+# Guardar reporte de exclusión en Excel
+write_xlsx(
+  reporte_exclusion,
+  path = file.path(dir_out, "Reporte_Exclusion_Paso_a_Paso.xlsx")
+)
+
+# Guardar la base limpia_2 en CSV
+write_csv(
+  data_limpia_2,
+  file = file.path(dir_mod, "data_limpia_2.csv"))
+
+# Guardar la base limpia_2 en xlsx
+write_xlsx(
+  data_limpia_2,
+  path = file.path(dir_mod, "data_limpia_2.xlsx"))
+
