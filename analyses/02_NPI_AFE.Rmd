@@ -31,7 +31,7 @@ library(broom) # resultados paramétricos 11.3
 ## 2. Carga de datos
 ```{r load-data}
 # Lee la base procesada
-data_limpia2 <- read_csv("../data/data_mod/data_limpia_2.csv")
+data_limpia2 <- read_csv("../data/data_mod/01/data_limpia_2.csv")
 ```
 
 ## 3. Conteo de sujetos por grupo
