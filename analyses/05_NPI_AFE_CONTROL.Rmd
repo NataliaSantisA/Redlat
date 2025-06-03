@@ -77,9 +77,9 @@ sexo_chi <- chisq.test(tabla_sexo)
 print(sexo_chi)
 ```
 
-## 5. Estandarizar residuos (z-scores ocupando la media y SD de los CN)
+## 5. Estandarizar variables (z-scores ocupando la media y SD de los CN)
 
-Se convierten los residuos a puntajes z para asegurar comparabilidad de escalas.
+Se convierten a puntajes z para asegurar comparabilidad de escalas.
 
 ```{r zscore-control}
 # 1) Calcula medias y ds sólo en controles
@@ -88,9 +88,17 @@ controls <- data_limpia2 %>% filter(clinical_diagnosis == "CN")
 # Vector de ítems NPI
 npi_vars <- names(data_limpia2) %>% str_subset("^npi_.*sev$")
 
+
+# Identificar variables con SD = 0 en controles (solo para npi_vars)
+vars_sd_cero <- npi_vars[sapply(controls[npi_vars], sd, na.rm = TRUE) == 0]
+
+# Mostrar resultados
+print(vars_sd_cero)
+# hay dos variables que no tienen sd en los controles "npi_delsev"  "npi_hallsev" por lo que no se ralizó el z-score en ellas
+
 # 2) Saca medias y ds de controles
 ctrl_stats <- controls %>%
-  summarise(across(all_of(npi_vars),
+  summarise(across(all_of(npi_vars-vars_sd_cero),
                    list(mean = ~ mean(.x, na.rm=TRUE),
                         sd   = ~ sd(.x,   na.rm=TRUE)),
                    .names = "{.col}_{.fn}"))
