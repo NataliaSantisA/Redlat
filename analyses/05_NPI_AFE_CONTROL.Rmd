@@ -39,7 +39,7 @@ library(writexl)
 ## 2. Carga de datos
 ```{r load-data, echo=FALSE, results='hide', warning=FALSE,message=FALSE}
 # Lee la base procesada
-data_limpia2 <- read_csv("../data/data_mod/01/data_limpia_2.csv")
+data_limpia2 <- read_csv("../data/data_original/data_limpia_2.csv")
 ```
 
 ## 3. Conteo de sujetos por grupo
@@ -77,59 +77,16 @@ sexo_chi <- chisq.test(tabla_sexo)
 print(sexo_chi)
 ```
 
-## 5. Residualizar ítems NPI por edad,educación y sexo
-Antes de estandarizar y hacer el análisis factorial, eliminamos la varianza atribuible a las covariables demográficas (**edad**, **escolaridad** y **sexo**). En este paso usamos un modelo lineal para cada ítem `npi_...sev` y extraemos sus **residuales**, los cuales representan la parte de la severidad libre de estos efectos demográficos.
-
-```{r residualize}
-# Selección de ítems de severidad NPI
-npi_vars <- names(data_limpia2) %>% str_subset("^npi_.*sev$")
-
-# Residualizar por edad, escolaridad y sexo
-data_resid <- data_limpia2 %>%
-  mutate(across(
-    all_of(npi_vars),
-    ~ resid(lm(.x ~ demo_age + cog_ed + demo_sex, data = data_limpia2, na.action = na.exclude))# Usar na.action = na.exclude para que los residuales tengan longitud igual al dataset original (quita lo NA para el calculo y despues los regresa a su posición)
-  ))
-```
-### 5.1 Verificación de residualización
-
-Para comprobar que la residualización eliminó correctamente la varianza demográfica se hizo:
-
-1. Revisar una muestra de valores originales vs. residuales.
-2. Comprobar que los residuales estén descorrelacionados con edad, escolaridad y sexo.
-
-```{r check-residuals, echo=FALSE}
-# Ejemplo con el primer ítem
-item <- npi_vars[1]
-
-# Comparar valores originales y residuales
-df_check <- tibble(
-  original = data_limpia2[[item]],
-  residual = data_resid[[item]]
-)
-print(head(df_check, 10))
-
-# Correlaciones de residuales con covariables (deben ser ~0)
-cor_res_age <- cor(df_check$residual, data_limpia2$demo_age, use="pairwise.complete.obs")
-cor_res_edu <- cor(df_check$residual, data_limpia2$cog_ed, use="pairwise.complete.obs")
-chi_res_sex <- aov(df_check$residual ~ data_limpia2$demo_sex)
-
-cat("Correl residual-edad:", round(cor_res_age,3), "
-")
-cat("Correl residual-esc:", round(cor_res_edu,3), "
-")
-print(summary(chi_res_sex))
-```
-## 6. Estandarizar residuos (z-scores ocupando la media y SD de los CN)
+## 5. Estandarizar residuos (z-scores ocupando la media y SD de los CN)
 
 Se convierten los residuos a puntajes z para asegurar comparabilidad de escalas.
 
 ```{r zscore-control}
 # 1) Calcula medias y ds sólo en controles
-controls <- data_resid %>% filter(clinical_diagnosis == "CN")
+controls <- data_limpia2 %>% filter(clinical_diagnosis == "CN")
 
 # Vector de ítems NPI
-npi_vars <- names(data_resid) %>% str_subset("^npi_.*sev$")
+npi_vars <- names(data_limpia2) %>% str_subset("^npi_.*sev$")
 
 # 2) Saca medias y ds de controles
 ctrl_stats <- controls %>%
@@ -139,7 +96,7 @@ ctrl_stats <- controls %>%
                    .names = "{.col}_{.fn}"))
 
 # 3) Aplica el z-score basado en ctrl_stats
-data_z <- data_resid %>%
+data_z <- data_limpia2 %>%
   mutate(across(
     all_of(npi_vars),
     ~ (.x - ctrl_stats[[paste0(cur_column(), "_mean")]]) /
@@ -150,7 +107,7 @@ data_z <- data_resid %>%
 head(select(data_z, all_of(npi_vars)), 10)
 ```
 
-## 7. Pruebas de adecuación factorial
+## 6. Pruebas de adecuación factorial
 
 En esta sección evaluamos si los ítems residualizados cumplen los requisitos para un análisis factorial:
 
@@ -181,7 +138,7 @@ print(kmo_res)
 
 En conjunto, estos indicadores confirman que los datos son apropiados para proseguir con el análisis paralelo (siguiente sección) y la Extracción Factorial Exploratoria.
 
-## 8. Determinar número de factores (Análisis paralelo)
+## 7. Determinar número de factores (Análisis paralelo)
 
 Se usa `fa.parallel()` para comparar los eigenvalores reales con los de matrices aleatorias y decidir cuántos factores extraer.
 
@@ -199,7 +156,7 @@ nf <- 4  # usar el valor sugerido por fa.parallel
 **Interpretación del análisis paralelo:**
 El resultado indica que **el número óptimo de factores es `r nf`** (según fa.parallel, aquel donde el eigenvalor real supera al de los datos simulados).. Esto significa que, tras ajustar por edad, escolaridad y sexo y estandarizar los residuos, cuatro factores principales capturan la estructura subyacente de las variables de severidad del NPI, superando a los eigenvalores esperados bajo aleatoriedad.
 
-## 9. Análisis Factorial Exploratorio
+## 8. Análisis Factorial Exploratorio
 
 Con el número de factores `nf` sugerido:
 
@@ -233,7 +190,7 @@ print(ef, digits = 2)
 
 En conjunto, estos indicadores confirman que un modelo de 4 factores es apropiado y ofrece un buen ajuste a los datos residualizados y estandarizados.
 
-## 10. Obtener puntuaciones y compuestos
+## 9. Obtener puntuaciones y compuestos
 
 Tras el EFA, se extraen las puntuaciones factoriales y se construyen compuestos
 
@@ -259,7 +216,7 @@ for(i in seq_len(ncol(L))) {
 }
 ```
 
-### 10.1 Mostrar resultados
+### 9.1 Mostrar resultados
 ```{r showcomposites,echo=FALSE}
 
 # Listado de ítems que componen cada factor
@@ -287,7 +244,7 @@ A partir de los ítems que cargan en cada factor (|carga| > 0.30), se propone la
 Estas etiquetas facilitan la interpretación clínica de cada dimensión factorial y permiten explorar cómo difieren entre grupos (NC, AD, bvFTD) en pasos posteriores.
 
 
-### 10.2 Consistencia interna: Cronbach’s Alpha
+### 9.2 Consistencia interna: Cronbach’s Alpha
 
 ```{r cronbach}
 
@@ -336,7 +293,7 @@ Factor 4 (Sintomatología psicótica) reunió delirios y alucinaciones, correspo
 
 Estos cuatro factores explican conjuntamente el 47 % de la varianza total de los ítems y muestran un ajuste adecuado (RMSR = 0.02; RMSEA = 0.052 [IC 90 %: 0.036–0.069]; TLI = 0.945). La aplicación de rotación oblicua (Oblimin) permitió captar las correlaciones moderadas observadas entre factores (r = 0.36–0.54), preservando la estructura subyacente de los síntomas neuropsiquiátricos.
 
-## 11. Comparación Paramétrica de puntuaciones factoriales entre grupos 
+## 10. Comparación Paramétrica de puntuaciones factoriales entre grupos 
 
 Para evaluar diferencias en las dimensiones identificadas (Factor1–Factor4) entre los grupos clínicos (AD, bvFTD, NC):
 
@@ -345,7 +302,7 @@ data_scores <- data_scores %>%
   mutate(clinical_diagnosis = factor(clinical_diagnosis, levels = c("CN", "AD", "FTD")))# Antes de graficar, nos aseguramos de que `clinical_diagnosis` sea factor y tenga el orden deseado
 ```
 
-### 11.1 Gráficos y ANOVA global
+### 10.1 Gráficos y ANOVA global
 ```{r compare-groups , echo=F}
 for(f in paste0("Factor", 1:4)) {
   p <- ggboxplot(
@@ -392,7 +349,7 @@ A partir de los boxplots y los valores p del ANOVA para cada factor:
 
 En conjunto, estos resultados muestran que en las cuatro dimensiones factoriales existe un aumento progresivo de la severidad de los síntomas (capturados por los factores) desde NC, pasando por AD, hasta bvFTD. Esto sugiere que cada factor discrimina eficazmente entre los grupos clínicos.
 
-#### 11.1.2 Tabla para ver missing
+#### 10.1.2 Tabla para ver missing
 ```{r tabla missing, echo=F}
 
 #  definimos el vector de factores
@@ -423,7 +380,7 @@ missing_any <- data_limpia2 %>%
 print(missing_any)
 
 ```
-### 11.2 Pruebas Tukey post-hoc entre grupos 
+### 10.2 Pruebas Tukey post-hoc entre grupos 
 
 Para identificar **qué pares** de grupos difieren en cada factor después del ANOVA, realizamos comparaciones múltiples de Tukey:
 
@@ -446,7 +403,7 @@ posthoc_list
 
 En resumen, hay un **gradiente consistente** NC < AD < bvFTD en todas las dimensiones factoriales, confirmando que cada factor discrimina de forma clara y estadísticamente significativa entre los tres grupos clínicos.
 
-### 11.3 Tabla de resultados paramétricos
+### 10.3 Tabla de resultados paramétricos
 
 ```{r resultados parametricos, , echo=F}
 
@@ -493,7 +450,7 @@ tukey_tbl
 
 
 
-### 11.4 Evaluación de supuestos (normalidad y homocedasticidad de los residuos)
+### 10.4 Evaluación de supuestos (normalidad y homocedasticidad de los residuos)
 
 ```{r check-assumptions-optimized, echo=F}
 
@@ -526,7 +483,7 @@ Homogeneidad de varianzas (Levene): Los valores F son elevados y todas las prueb
 
 Dado que se incumplen ambos supuestos (normalidad y homocedasticidad), en lugar de ANOVA+Tukey para las comparaciones de grupos se optará por Kruskal–Wallis seguido de Dunn con corrección Bonferroni.
 
-## 12. Comparación no paramétrica
+## 11. Comparación no paramétrica
 Si **shapiro_p < .05** o **levene_p < .05**, por tanto se usa Kruskal-Wallis y Dunn:
 
 ```{r nonparametric, echo=F}
